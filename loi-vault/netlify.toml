@@ -1,0 +1,19 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Extraction of long LOIs can exceed the 10s free-tier cap.
+# This timeout is honored on Netlify Pro; on the free tier, functions
+# are capped at 10 seconds regardless. See DEPLOY.md troubleshooting.
+[functions."extract-loi"]
+  timeout = 60
+
+[functions."summarize-round"]
+  timeout = 60
