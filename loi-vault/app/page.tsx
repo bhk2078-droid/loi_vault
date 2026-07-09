@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input";
 export default function Landing() {
   const router = useRouter();
   const [email, setEmail] = useState("");
-  const [state, setState] = useState<"idle" | "sending" | "sent" | "blocked" | "error">("idle");
+  const [password, setPassword] = useState("");
+  const [state, setState] = useState<"idle" | "signing" | "blocked" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
@@ -18,23 +19,26 @@ export default function Landing() {
     });
   }, [router]);
 
-  async function sendLink() {
+  async function signIn() {
     const clean = email.trim().toLowerCase();
-    if (!clean.includes("@")) return;
+    if (!clean.includes("@") || !password) return;
     if (!isAllowedEmail(clean)) {
       setState("blocked");
       return;
     }
-    setState("sending");
-    const { error } = await supabase().auth.signInWithOtp({
-      email: clean,
-      options: { emailRedirectTo: `${window.location.origin}/dashboard` },
-    });
+    setState("signing");
+    const { error } = await supabase().auth.signInWithPassword({ email: clean, password });
     if (error) {
-      setErrorMsg(error.message);
+      // Supabase returns the same message for a bad password and an unknown
+      // account, on purpose — don't leak which emails have accounts.
+      setErrorMsg(
+        error.message === "Invalid login credentials"
+          ? "That email and password don't match an account."
+          : error.message
+      );
       setState("error");
     } else {
-      setState("sent");
+      router.replace("/dashboard");
     }
   }
 
@@ -52,20 +56,12 @@ export default function Landing() {
           </h1>
           <p className="mt-5 text-[15px] leading-relaxed text-zinc-500 dark:text-zinc-400">
             Drop in a Letter of Intent. LOI Vault pulls the deal terms, sets every
-counter side by side, and shows exactly what moved — and what you&apos;re
-agreeing to.
+            counter side by side, and shows exactly what moved — and what you&apos;re
+            agreeing to.
           </p>
 
           <div className="mt-10 border-t border-zinc-200 dark:border-zinc-800 pt-8">
-            {state === "sent" ? (
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-                <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Check your email</p>
-                <p className="mt-1 text-sm text-zinc-500">
-                  A sign-in link is on its way to <span className="font-medium">{email}</span>.
-                  Open it on this device to continue.
-                </p>
-              </div>
-            ) : state === "blocked" ? (
+            {state === "blocked" ? (
               <div className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-5">
                 <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
                   That email domain isn&apos;t on this workspace&apos;s allowlist.
@@ -80,35 +76,54 @@ agreeing to.
               </div>
             ) : (
               <form
-                className="space-y-3"
+                className="space-y-4"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  void sendLink();
+                  void signIn();
                 }}
               >
-                <label htmlFor="email" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  Work email
-                </label>
-                <div className="flex gap-2">
+                <div className="space-y-1.5">
+                  <label htmlFor="email" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    Work email
+                  </label>
                   <Input
                     id="email"
                     type="email"
                     placeholder="you@yourfirm.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="email"
+                    autoComplete="username"
                   />
-                  <Button type="submit" disabled={state === "sending" || !email.includes("@")}>
-                    {state === "sending" ? "Sending…" : "Send link"}
-                  </Button>
                 </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="password" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    Password
+                  </label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                  />
+                </div>
+
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={state === "signing" || !email.includes("@") || !password}
+                >
+                  {state === "signing" ? "Signing in…" : "Sign in"}
+                </Button>
+
                 {state === "error" && (
-                  <p className="text-sm text-red-600 dark:text-red-400">
-                    Couldn&apos;t send the link: {errorMsg}
-                  </p>
+                  <p className="text-sm text-red-600 dark:text-red-400">{errorMsg}</p>
                 )}
+
                 <p className="text-xs text-zinc-400">
-                  No password. We email you a one-time sign-in link.
+                  Accounts are created by your workspace admin. No sign-up, no email required.
                 </p>
               </form>
             )}
