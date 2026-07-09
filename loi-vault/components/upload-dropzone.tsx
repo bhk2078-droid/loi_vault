@@ -1,5 +1,6 @@
 "use client";
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useRef, useState } from "react";
 import { supabase, emailDomain } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -105,11 +106,26 @@ export function UploadDropzone({ open, onClose, buildingId, dealId, nextVersion,
           uploaderId: user.id,
         }),
       });
-      const body = await res.json();
+      // The function can fail before it ever returns JSON — a crash, a timeout,
+      // a missing env var — and Netlify answers with an HTML error page. Read
+      // the body as text first so the real status and message reach the screen
+      // instead of a "Unexpected token '<'" parse error.
+      const raw = await res.text();
+      let body: { error?: string; version?: { id: string; extracted_json: Record<string, any> }; degraded?: boolean };
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        const snippet = raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
+        throw new Error(
+          res.status === 404
+            ? "The extract-loi function isn't deployed. Check the Netlify deploy log for 'Packaging Functions'."
+            : `Extraction failed (HTTP ${res.status}). ${snippet || "The server returned an error page."} — see Netlify → Logs → Functions → extract-loi.`
+        );
+      }
       if (!res.ok) throw new Error(body.error || `Extraction failed (${res.status})`);
 
       setStage("building");
-      const x = body.version.extracted_json;
+      const x = body.version!.extracted_json;
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (x?.parties?.tenant?.value) patch.tenant = x.parties.tenant.value;
       if (x?.parties?.landlord?.value) patch.landlord = x.parties.landlord.value;
@@ -117,7 +133,7 @@ export function UploadDropzone({ open, onClose, buildingId, dealId, nextVersion,
       await sb.from("deals").update(patch).eq("id", targetDealId);
 
       setStage("done");
-      onComplete(targetDealId!, body.version.id, !!body.degraded);
+      onComplete(targetDealId!, body.version!.id, !!body.degraded);
     } catch (e) {
       setStage("error");
       setError(e instanceof Error ? e.message : "Something went wrong.");
