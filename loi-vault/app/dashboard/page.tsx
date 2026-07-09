@@ -28,6 +28,7 @@ export default function Dashboard() {
   const [newName, setNewName] = useState("");
   const [newAddress, setNewAddress] = useState("");
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const sb = supabase();
@@ -79,6 +80,22 @@ export default function Dashboard() {
       return;
     }
     router.push(`/building/${data.id}`);
+  }
+
+  /** Cascades to every transaction and proposal in the building. */
+  async function deleteBuilding(b: BuildingRow) {
+    const warn = b.dealCount
+      ? `Delete "${b.name}" and all ${b.dealCount} transaction(s) inside it? This can't be undone.`
+      : `Delete "${b.name}"?`;
+    if (!confirm(warn)) return;
+    setDeleting(b.id);
+    const { error: err } = await supabase().from("buildings").delete().eq("id", b.id);
+    setDeleting(null);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    setBuildings((bs) => bs.filter((x) => x.id !== b.id));
   }
 
   const filtered = useMemo(() => {
@@ -156,8 +173,21 @@ export default function Dashboard() {
               <Link
                 key={b.id}
                 href={`/building/${b.id}`}
-                className="group rounded-lg border border-zinc-200 dark:border-zinc-800 p-5 hover:border-accent hover:shadow-sm transition-all"
+                className="group relative rounded-lg border border-zinc-200 dark:border-zinc-800 p-5 hover:border-accent hover:shadow-sm transition-all"
               >
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void deleteBuilding(b);
+                  }}
+                  disabled={deleting === b.id}
+                  className="absolute right-2 top-2 hidden rounded px-1.5 text-zinc-300 hover:bg-zinc-100 hover:text-red-600 group-hover:block dark:hover:bg-zinc-800"
+                  aria-label={`Delete ${b.name}`}
+                  title="Delete this building"
+                >
+                  {deleting === b.id ? "…" : "✕"}
+                </button>
                 <h3 className="font-serif text-[17px] font-medium group-hover:text-accent transition-colors">{b.name}</h3>
                 {b.address && <p className="text-[13px] text-zinc-400 mt-0.5 truncate">{b.address}</p>}
                 <div className="mt-4 flex items-baseline justify-between text-[13px]">
