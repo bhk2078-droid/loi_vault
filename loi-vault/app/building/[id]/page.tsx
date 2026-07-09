@@ -35,6 +35,7 @@ export default function BuildingPage() {
   const [deals, setDeals] = useState<DealRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const sb = supabase();
@@ -73,6 +74,29 @@ export default function BuildingPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** Deleting the deal cascades to its proposals; files are cleaned up best-effort. */
+  async function deleteDeal(d: DealRow) {
+    if (!confirm(`Delete "${d.tenant || d.name}" and all ${d.rounds} proposal(s)? This can't be undone.`)) return;
+    setDeleting(d.id);
+    const sb = supabase();
+    try {
+      const { data: sess } = await sb.auth.getSession();
+      const domain = (sess.session?.user.email || "").split("@")[1];
+      const prefix = `${domain}/${buildingId}/${d.id}`;
+      const { data: files } = await sb.storage.from("loi-files").list(prefix);
+      if (files?.length) await sb.storage.from("loi-files").remove(files.map((f) => `${prefix}/${f.name}`));
+    } catch {
+      // Orphaned files are untidy, not dangerous.
+    }
+    const { error } = await sb.from("deals").delete().eq("id", d.id);
+    setDeleting(null);
+    if (error) {
+      alert(`Could not delete: ${error.message}`);
+      return;
+    }
+    setDeals((ds) => ds.filter((x) => x.id !== d.id));
+  }
 
   if (loading) {
     return <main className="min-h-screen flex items-center justify-center text-zinc-400 text-sm">Loading…</main>;
@@ -120,6 +144,7 @@ export default function BuildingPage() {
                   <th scope="col" className="px-4 py-2.5 font-medium">Rounds</th>
                   <th scope="col" className="px-4 py-2.5 font-medium">Status</th>
                   <th scope="col" className="px-4 py-2.5 font-medium">Last activity</th>
+                  <th scope="col" className="px-4 py-2.5 font-medium"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -127,13 +152,27 @@ export default function BuildingPage() {
                   <tr
                     key={d.id}
                     onClick={() => router.push(`/deal/${d.id}`)}
-                    className="cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors"
+                    className="group cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors"
                   >
                     <td className="px-4 py-3 font-medium">{d.tenant || d.name}</td>
                     <td className="px-4 py-3 text-zinc-500">{d.suite || "—"}</td>
                     <td className="px-4 py-3 text-zinc-500 tabular-nums">{d.rounds}</td>
                     <td className="px-4 py-3"><Badge tone={d.status}>{d.status}</Badge></td>
                     <td className="px-4 py-3 text-zinc-400">{d.lastRound ? fmtDate(d.lastRound) : "—"}</td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void deleteDeal(d);
+                        }}
+                        disabled={deleting === d.id}
+                        className="rounded px-1.5 text-zinc-300 hover:bg-zinc-100 hover:text-red-600 dark:hover:bg-zinc-800"
+                        aria-label={`Delete ${d.tenant || d.name}`}
+                        title="Delete this transaction"
+                      >
+                        {deleting === d.id ? "…" : "✕"}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
