@@ -51,9 +51,9 @@ export default function Landing() {
             on the record.
           </h1>
           <p className="mt-5 text-[15px] leading-relaxed text-zinc-500 dark:text-zinc-400">
-            Upload a Letter of Intent. LOI Vault extracts the deal terms, runs the
-            commission math with the formula in plain sight, and tracks every version
-            across the negotiation.
+            Drop in a Letter of Intent. LOI Vault pulls the deal terms, sets every
+counter side by side, and shows exactly what moved — and what you&apos;re
+agreeing to.
           </p>
 
           <div className="mt-10 border-t border-zinc-200 dark:border-zinc-800 pt-8">
@@ -116,7 +116,7 @@ export default function Landing() {
         </div>
       </div>
       <footer className="px-6 py-4 text-center text-xs text-zinc-400">
-        Commission figures are estimates — verify against your firm&apos;s specific commission schedule.
+        Extracted terms are a starting point — verify against the executed document.
       </footer>
     </main>
   );
