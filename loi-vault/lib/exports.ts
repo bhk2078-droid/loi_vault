@@ -32,6 +32,37 @@ export interface ExportBundle {
 const stamp = () => new Date().toISOString().slice(0, 10);
 const safe = (s: string) => s.replace(/[^\w.\- ]+/g, "").trim().replace(/\s+/g, "-");
 
+/**
+ * Webpack wraps CommonJS and UMD packages, so `await import("pkg")` may hand
+ * back the real module or a namespace with everything under `.default`. Which
+ * one you get depends on the package's build, not on your code. Getting it
+ * wrong produces a minified "c is not a function" at the call site and nothing
+ * useful above it — so probe for a symbol we know exists rather than assume.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function interop<T>(mod: any, probe: string): T {
+  if (mod && typeof mod[probe] !== "undefined") return mod as T;
+  if (mod?.default && typeof mod.default[probe] !== "undefined") return mod.default as T;
+  return (mod?.default ?? mod) as T;
+}
+
+/**
+ * file-saver was one more CJS package to interop, for four lines of work we can
+ * do ourselves. Object URLs must be revoked or the blob leaks for the life of
+ * the tab.
+ */
+function download(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
 function prepare(bundle: ExportBundle) {
   const trail = buildTrail(bundle.versions, TRAIL_ROWS);
   const rows = visibleRows(trail, bundle.hiddenRows || [], false);
@@ -54,9 +85,7 @@ export async function exportExcel(bundle: ExportBundle) {
   // and zlib. Webpack compiles it happily and it explodes the moment it runs in
   // a browser. The dist bundle is self-contained; the UMD wrapper means the
   // real export may sit on .default or on the namespace itself.
-  const mod = (await import("exceljs/dist/exceljs.min.js")) as unknown as Record<string, unknown>;
-  const ExcelJS = (mod.default ?? mod) as typeof import("exceljs");
-  const { saveAs } = await import("file-saver");
+  const ExcelJS = interop<typeof import("exceljs")>(await import("exceljs/dist/exceljs.min.js"), "Workbook");
   const { trail, rows, lit, legend } = prepare(bundle);
 
   const wb = new ExcelJS.Workbook();
@@ -133,7 +162,7 @@ export async function exportExcel(bundle: ExportBundle) {
   }
 
   const buf = await wb.xlsx.writeBuffer();
-  saveAs(
+  download(
     new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
     `${safe(bundle.tenantName)}-transaction-trail-${stamp()}.xlsx`
   );
@@ -143,8 +172,7 @@ export async function exportExcel(bundle: ExportBundle) {
 // Word — the version that goes into an ownership email.
 // ---------------------------------------------------------------
 export async function exportWord(bundle: ExportBundle) {
-  const docx = await import("docx");
-  const { saveAs } = await import("file-saver");
+  const docx = interop<typeof import("docx")>(await import("docx"), "Document");
   const {
     Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, HeadingLevel,
     WidthType, AlignmentType, ShadingType, BorderStyle, UnderlineType,
@@ -228,7 +256,7 @@ export async function exportWord(bundle: ExportBundle) {
     ],
   });
 
-  saveAs(await Packer.toBlob(doc), `${safe(bundle.tenantName)}-transaction-trail-${stamp()}.docx`);
+  download(await Packer.toBlob(doc), `${safe(bundle.tenantName)}-transaction-trail-${stamp()}.docx`);
 }
 
 // ---------------------------------------------------------------
@@ -236,8 +264,10 @@ export async function exportWord(bundle: ExportBundle) {
 // ---------------------------------------------------------------
 export async function exportPDF(bundle: ExportBundle) {
   const { createElement: h } = await import("react");
-  const { Document, Page, Text, View, StyleSheet, pdf } = await import("@react-pdf/renderer");
-  const { saveAs } = await import("file-saver");
+  const { Document, Page, Text, View, StyleSheet, pdf } = interop<typeof import("@react-pdf/renderer")>(
+    await import("@react-pdf/renderer"),
+    "pdf"
+  );
   const { trail, rows, lit, legend } = prepare(bundle);
 
   const n = Math.max(1, trail.versions.length);
@@ -310,5 +340,5 @@ export async function exportPDF(bundle: ExportBundle) {
   );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  saveAs(await pdf(doc as any).toBlob(), `${safe(bundle.tenantName)}-transaction-trail-${stamp()}.pdf`);
+  download(await pdf(doc as any).toBlob(), `${safe(bundle.tenantName)}-transaction-trail-${stamp()}.pdf`);
 }
