@@ -89,44 +89,27 @@ function composePremises(loi: ExtractedLOI): string {
 }
 
 /**
- * The trail view. Ordered the way brokers read it, starting with the eleven
- * terms that carry a negotiation. Empty rows hide themselves, so a short LOI
- * produces a short grid.
+ * The trail view: the business points a lease negotiation actually turns on,
+ * in the order a broker reads them. Everything else the extractor finds — free
+ * rent, TI, assignment, security deposit, use, brokerage — lives in the
+ * "All terms" view. Rows are hidden per-transaction with the ✕ on the row
+ * label, not automatically, because a blank cell is itself information:
+ * it says this proposal was silent on a term the other one addressed.
  */
 export const TRAIL_ROWS: RowDef[] = [
   { id: "premises", label: "Premises", kind: "text", section: "property", compose: composePremises, parts: [["property", "floor"], ["property", "rsf"], ["property", "premises_description"]] },
   row("term", "term", "term_description", "text", "Term"),
   row("lcd", "term", "commencement_date", "date", "Lease Commencement Date"),
   row("rcd", "term", "rent_commencement_date", "date", "Rent Commencement Date"),
-  row("expiration", "term", "expiration_date", "date", "Expiration Date"),
   row("base_rent", "economics", "base_rent_psf", "rent_psf", "Base Rent"),
-  row("rent_schedule", "economics", "rent_schedule", "schedule", "Rent Schedule"),
-  row("rent_escalations", "economics", "escalations", "text", "Rent Escalations"),
-  row("free_rent", "economics", "free_rent_months", "months", "Free Rent"),
-  row("opex", "economics", "opex_base_year", "text", "Escalations (OPEX)"),
-  row("taxes", "economics", "tax_base_year", "text", "Escalations (RE Taxes)"),
+  row("opex", "economics", "opex_base_year", "text", "Operating Escalations"),
+  row("taxes", "economics", "tax_base_year", "text", "Real Estate Taxes"),
   row("electricity", "economics", "electricity", "text", "Electricity"),
-  row("ll_work", "economics", "landlord_work", "textarea", "Landlord's Premises Work"),
-  row("ti_psf", "economics", "ti_allowance_psf", "currency", "TI Allowance ($/RSF)"),
-  row("ti_total", "economics", "ti_allowance_total", "currency", "TI Allowance (total)"),
+  row("ll_work", "economics", "landlord_work", "textarea", "Landlord's Work"),
   row("furniture", "other", "furniture", "textarea", "Furniture"),
+  row("termination", "options", "termination_option", "textarea", "Termination Option"),
   row("renewal", "options", "renewal_options", "textarea", "Renewal Option"),
-  row("expansion", "options", "expansion_rights", "textarea", "Expansion Rights"),
-  row("rofo", "options", "rofo_rofr", "textarea", "ROFO / ROFR"),
-  row("assignment", "options", "assignment_sublet", "textarea", "Assignment / Sublet"),
-  row("security", "economics", "security_deposit", "textarea", "Security Deposit"),
-  row("early_access", "term", "early_access", "textarea", "Early Access"),
-  row("use", "other", "use_clause", "textarea", "Use"),
-  row("access", "other", "building_access", "text", "Building Access"),
-  row("hvac", "other", "hvac", "textarea", "HVAC"),
-  row("cleaning", "other", "cleaning", "text", "Cleaning"),
-  row("restoration", "other", "restoration", "textarea", "Restoration"),
-  row("special", "other", "special_conditions", "list", "Special Conditions"),
-  row("ll_broker", "parties", "landlord_broker", "text", "Landlord Broker"),
-  row("t_broker", "parties", "tenant_broker", "text", "Tenant Broker"),
-  row("comm_ll", "commission", "landlord_rate", "text", "Landlord Rate"),
-  row("comm_tr", "commission", "tenant_rep_rate", "text", "Tenant Rep Rate"),
-  row("comm_notes", "commission", "notes", "textarea", "Commission Notes"),
+  row("rofo", "options", "rofo_rofr", "textarea", "Right of First Offer"),
 ];
 
 /** Every extracted field, grouped by section — the working view. */
@@ -257,9 +240,10 @@ export function buildTrail(versions: TrailVersion[], defs: RowDef[] = TRAIL_ROWS
   return { versions: ordered, rows, sections, movedCounts, agreedCounts };
 }
 
-export function visibleRows(trail: Trail, hideEmpty: boolean, onlyMoved: boolean): TrailRow[] {
+export function visibleRows(trail: Trail, hiddenRowIds: string[], onlyMoved: boolean): TrailRow[] {
+  const hidden = new Set(hiddenRowIds);
   return trail.rows.filter((r) => {
-    if (hideEmpty && r.allEmpty) return false;
+    if (hidden.has(r.id)) return false;
     if (onlyMoved && !r.everMoved) return false;
     return true;
   });
