@@ -124,11 +124,17 @@ export function UploadDropzone({ open, onClose, buildingId, dealId, nextVersion,
     }
   }
 
-  if (!open) return null;
   const busy = stage === "reading" || stage === "extracting" || stage === "building";
+  if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => e.preventDefault()}
+    >
       <div className="w-full max-w-lg rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 shadow-xl">
         <div className="flex items-start justify-between">
           <h2 className="font-serif text-xl font-medium text-zinc-900 dark:text-zinc-50">
@@ -165,15 +171,39 @@ export function UploadDropzone({ open, onClose, buildingId, dealId, nextVersion,
             "mt-4 rounded-lg border-2 border-dashed p-8 text-center transition-colors cursor-pointer",
             dragOver ? "border-accent bg-accent-soft dark:bg-accent-softDark" : "border-zinc-300 dark:border-zinc-700 hover:border-zinc-400"
           )}
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => { e.preventDefault(); setDragOver(false); pick(e.dataTransfer.files?.[0] || null); }}
-          onClick={() => inputRef.current?.click()}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") inputRef.current?.click(); }}
+          onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); }}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "copy"; setDragOver(true); }}
+          onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setDragOver(false);
+            pick(e.dataTransfer.files?.[0] || null);
+          }}
+          onClick={() => { if (!busy) inputRef.current?.click(); }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              inputRef.current?.click();
+            }
+          }}
           role="button"
           tabIndex={0}
         >
-          <input ref={inputRef} type="file" accept={ACCEPTED.join(",")} className="sr-only" onChange={(e) => pick(e.target.files?.[0] || null)} />
+          {/* The input sits inside the drop zone, so its own click must not
+              bubble back up and re-trigger inputRef.click() — that recursion
+              opens and immediately closes the file dialog. */}
+          <input
+            ref={inputRef}
+            type="file"
+            accept={ACCEPTED.join(",")}
+            className="sr-only"
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => {
+              pick(e.target.files?.[0] || null);
+              e.target.value = ""; // let the same file be picked twice in a row
+            }}
+          />
           {file ? (
             <div>
               <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{file.name}</p>
