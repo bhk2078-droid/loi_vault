@@ -26,6 +26,10 @@ interface Props {
   onDeleteColumn: (versionId: string) => void;
   onAddSuggested: () => void;
   addingSuggested?: boolean;
+  /** Row ids hidden for this transaction, shared across the team. */
+  hiddenRows: string[];
+  onHideRow: (rowId: string) => void;
+  onRestoreRows: () => void;
 }
 
 const HIGHLIGHTS: Array<{ value: HighlightMode; label: string; legend: string }> = [
@@ -44,10 +48,12 @@ export function TransactionTrail({
   onDeleteColumn,
   onAddSuggested,
   addingSuggested,
+  hiddenRows,
+  onHideRow,
+  onRestoreRows,
 }: Props) {
   const [view, setView] = useState<"trail" | "detail">("trail");
   const [highlight, setHighlight] = useState<HighlightMode>(() => defaultHighlight(versions));
-  const [hideEmpty, setHideEmpty] = useState(true);
   const [onlyMoved, setOnlyMoved] = useState(false);
   const [editingHeader, setEditingHeader] = useState<string | null>(null);
   const [labelDraft, setLabelDraft] = useState("");
@@ -59,7 +65,7 @@ export function TransactionTrail({
 
   const defs = view === "trail" ? TRAIL_ROWS : DETAIL_ROWS;
   const trail = useMemo(() => buildTrail(versions, defs), [versions, defs]);
-  const rows = useMemo(() => visibleRows(trail, hideEmpty, onlyMoved), [trail, hideEmpty, onlyMoved]);
+  const rows = useMemo(() => visibleRows(trail, hiddenRows, onlyMoved), [trail, hiddenRows, onlyMoved]);
   const legend = HIGHLIGHTS.find((h) => h.value === highlight)?.legend || "";
 
   if (!versions.length) {
@@ -110,10 +116,11 @@ export function TransactionTrail({
             <input type="checkbox" checked={onlyMoved} onChange={(e) => setOnlyMoved(e.target.checked)} className="accent-accent" />
             Only moved
           </label>
-          <label className="flex cursor-pointer items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-            <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} className="accent-accent" />
-            Hide empty
-          </label>
+          {hiddenRows.length > 0 && (
+            <button onClick={onRestoreRows} className="text-zinc-400 underline underline-offset-2 hover:text-zinc-700">
+              {hiddenRows.length} row{hiddenRows.length === 1 ? "" : "s"} hidden — restore
+            </button>
+          )}
           <Button variant="secondary" size="sm" onClick={onAddSuggested} disabled={addingSuggested}>
             {addingSuggested ? "Adding…" : "+ Suggested counter"}
           </Button>
@@ -218,9 +225,19 @@ export function TransactionTrail({
                   <tr key={r.id}>
                     <th
                       scope="row"
-                      className="sticky left-0 z-10 w-[190px] min-w-[190px] border border-zinc-400 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-3 text-left align-middle text-[13px] font-semibold text-zinc-900 dark:text-zinc-100"
+                      className="group/row sticky left-0 z-10 w-[190px] min-w-[190px] border border-zinc-400 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-3 text-left align-middle text-[13px] font-semibold text-zinc-900 dark:text-zinc-100"
                     >
-                      {r.label}
+                      <span className="flex items-center justify-between gap-2">
+                        {r.label}
+                        <button
+                          onClick={() => onHideRow(r.id)}
+                          className="hidden shrink-0 rounded px-1 text-zinc-300 hover:bg-zinc-100 hover:text-red-600 group-hover/row:block dark:hover:bg-zinc-800"
+                          aria-label={`Remove the ${r.label} row`}
+                          title="Remove this row from the trail"
+                        >
+                          ✕
+                        </button>
+                      </span>
                     </th>
                     {r.cells.map((c) => (
                       <TrailCell
