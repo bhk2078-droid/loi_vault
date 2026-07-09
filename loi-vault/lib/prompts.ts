@@ -18,9 +18,9 @@ Return ONLY a JSON object with this exact structure. Every leaf field marked F m
   },
   "parties": { "tenant": F, "landlord": F, "landlord_broker": F, "tenant_broker": F },
   "property": { "address": F, "floor": F, "premises_description": F, "rsf": F(number), "usf": F(number|null), "loss_factor": F(number|null) },
-  "term": { "term_description": F(the term stated the way the document states it, e.g. "Five (5) Years" or "Five (5) Years from RCD"), "lease_term_months": F(number), "commencement_date": F(ISO date string yyyy-mm-dd), "rent_commencement_date": F(ISO date), "expiration_date": F(ISO date), "early_access": F },
+  "term": { "term_description": F(the term stated the way the document states it, e.g. "Five (5) Years" or "Five (5) Years from RCD"), "lease_term_months": F(number), "commencement_date": F(string — "yyyy-mm-dd" if the document states a calendar date, otherwise the condition verbatim, e.g. "Upon mutual execution and delivery of Lease documents. Target: August 1, 2026"), "rent_commencement_date": F(string — same rule, e.g. "Three (3) Months from Lease Commencement Date"), "expiration_date": F(string — "yyyy-mm-dd", or null if commencement is conditional), "early_access": F },
   "economics": { "base_rent_psf": F(number), "rent_schedule": F(array of {"period": string, "psf": number, "annual": number, "monthly": number}), "escalations": F, "free_rent_months": F(number), "ti_allowance_psf": F(number), "ti_allowance_total": F(number), "landlord_work": F, "opex_base_year": F, "tax_base_year": F, "electricity": F, "security_deposit": F },
-  "options": { "renewal_options": F, "expansion_rights": F, "rofo_rofr": F, "assignment_sublet": F },
+  "options": { "termination_option": F, "renewal_options": F, "expansion_rights": F, "rofo_rofr": F, "assignment_sublet": F },
   "other": { "use_clause": F, "building_access": F, "hvac": F, "cleaning": F, "restoration": F, "furniture": F, "special_conditions": F(array of strings) },
   "commission": { "landlord_rate": F, "tenant_rep_rate": F, "notes": F }
 }
@@ -29,15 +29,17 @@ Rules:
 - document_meta.round_label becomes the column header in a side-by-side trail, so keep it short and describe who sent it and what it is. Brokers write these as "Tenant RFP", "LL Proposal", "Tenant Counter", "LL Counter" — use that register. Infer the sending party from the letterhead, signature block, or "we are pleased to submit / on behalf of" language.
 - opex_base_year and tax_base_year are the OPEX and real-estate-tax escalation terms. Capture them the way the document states them — a base year ("2027 Calendar base year", "2026/2027 Fiscal base year") or an escalation ("3% annual increases in Base Rent") — whichever the document uses. Do not convert one into the other.
 - term_description: quote the term as written, including any qualifier such as "from RCD" or "from the Rent Commencement Date". lease_term_months carries the same term as a number.
-- commencement_date and rent_commencement_date are frequently conditional rather than calendar dates ("Upon lease execution and completion of Landlord's Work"). When that is the case, put the condition verbatim in source_text and set value to null rather than inventing a date.
-- Dates in ISO format yyyy-mm-dd. If a date is relative (e.g. "one month from commencement"), compute it from the commencement date when possible and note the source phrase.
+- free_rent_months: if rent commencement is N months after lease commencement, that is N months of free rent, even when both dates are conditional. "Three (3) Months from Lease Commencement Date" means free_rent_months = 3.
+- Dates: use ISO yyyy-mm-dd when the document states an actual calendar date. When a date is instead expressed as a CONDITION or a RELATIVE period — "Upon mutual execution and delivery of Lease documents", "Three (3) Months from Lease Commencement Date", "Upon substantial completion of Landlord's Work" — put that condition VERBATIM in the value as a string. Never leave a date field null when the document says something about it. If the document gives both a condition and a target date, combine them: "Upon mutual execution and delivery of Lease documents. Target: August 1, 2026". These fields print directly into a side-by-side grid that brokers read, and a blank cell wrongly implies the document was silent.
 - lease_term_months: convert years/months language to total months (e.g. "one year, one month" = 13).
 - If escalations are "None", set escalations value to "None" with high confidence and rent_schedule to a single period covering the full term at the base rent (compute annual = rsf * psf, monthly = annual / 12).
 - free_rent_months: if rent commencement is N months after lease commencement, that is N months free rent.
-- ti_allowance: if no allowance is granted but landlord performs work, set ti_allowance_psf and ti_allowance_total to 0 and describe the work in landlord_work.
-- expiration_date: commencement date + lease term, minus one day, if not stated explicitly.
+- ti_allowance: set to 0 ONLY where the document explicitly says there is no allowance ("no TI allowance", "as-is with no work letter"). If the document simply never mentions a tenant improvement allowance — common where the landlord instead performs defined work — leave both ti_allowance fields null and describe the work in landlord_work. A $0.00 in the grid asserts the parties agreed to zero; a blank correctly says the document is silent.
+- expiration_date: commencement date + lease term, minus one day, if not stated explicitly. If the commencement date is conditional rather than a calendar date, leave expiration_date null rather than computing from a target date.
 - Redlined and marked-up documents: extract the FINAL proposed state of each term — what the sender is proposing now — not the struck-through original. If a term is struck without replacement, its value is null.
-- If a field is genuinely absent from the document, use value null, confidence 0, source_text "".
+- termination_option: any early-termination / break right — the window, the notice period, and the penalty or unamortized-costs payment. Null if the document grants none.
+- Open items count as terms. Where a proposal ASKS a question instead of stating a position — "Please confirm how electricity is handled in the Building", "Please describe how cleaning is handled" — capture that request verbatim as the value with high confidence. It is the sender's position on that term and belongs in the grid.
+- If a field is genuinely absent from the document — no statement, no question, no condition — use value null, confidence 0, source_text "".
 - confidence reflects how directly the document states the value: verbatim = 0.95+, computed/inferred = 0.7-0.9, guessed = below 0.7.
 - special_conditions: capture anything unusual (desk-share rights, furniture arrangements, freight rates, profit-sharing on sublease, etc.) as an array of short strings.
 
