@@ -26,6 +26,7 @@ interface Deal {
   tenant: string | null;
   suite: string | null;
   status: string;
+  hidden_rows: string[] | null;
   buildings: { id: string; name: string } | null;
 }
 
@@ -53,16 +54,19 @@ export default function DealPage() {
     }
     const { data: d } = await sb
       .from("deals")
-      .select("id, building_id, name, tenant, suite, status, buildings(id, name)")
+      .select("id, building_id, name, tenant, suite, status, hidden_rows, buildings(id, name)")
       .eq("id", dealId)
       .single();
 
     const { data: vs } = await sb
       .from("loi_versions")
       .select(
-        "id, version_number, round_label, party, source, document_date, uploaded_at, uploaded_by_email, file_name, extracted_json, cell_overrides, change_summary"
+        "id, version_number, round_label, party, source, document_date, uploaded_at, uploaded_by_email, file_name, extracted_json, cell_overrides, change_summary, status"
       )
       .eq("deal_id", dealId)
+      // Rows mid-extraction (or failed) have no terms yet — they'd render as a
+      // ghost column and poison every diff against the column before them.
+      .eq("status", "ready")
       .order("version_number", { ascending: true });
 
     setDeal(d as unknown as Deal | null);
@@ -83,6 +87,43 @@ export default function DealPage() {
   const trail = useMemo(() => buildTrail(versions, TRAIL_ROWS), [versions]);
   const nextVersion = (versions[versions.length - 1]?.version_number || 0) + 1;
   const tenantName = deal?.tenant || deal?.name || "";
+  const hiddenRows = useMemo(() => deal?.hidden_rows || [], [deal]);
+
+  /** Hiding a row is a shared decision — it persists on the transaction. */
+  async function hideRow(rowId: string) {
+    if (!deal) return;
+    const next = Array.from(new Set([...hiddenRows, rowId]));
+    setDeal({ ...deal, hidden_rows: next });
+    await supabase().from("deals").update({ hidden_rows: next }).eq("id", dealId);
+  }
+
+  async function restoreRows() {
+    if (!deal) return;
+    setDeal({ ...deal, hidden_rows: [] });
+    await supabase().from("deals").update({ hidden_rows: [] }).eq("id", dealId);
+  }
+
+  /** Deletes the transaction, its proposals, and the uploaded files. */
+  async function deleteTransaction() {
+    if (!deal) return;
+    if (!confirm(`Delete "${tenantName}" and all ${versions.length} proposal(s)? This can't be undone.`)) return;
+    const sb = supabase();
+    try {
+      const { data: sess } = await sb.auth.getSession();
+      const domain = (sess.session?.user.email || "").split("@")[1];
+      const prefix = `${domain}/${deal.building_id}/${dealId}`;
+      const { data: files } = await sb.storage.from("loi-files").list(prefix);
+      if (files?.length) await sb.storage.from("loi-files").remove(files.map((f) => `${prefix}/${f.name}`));
+    } catch {
+      // Orphaned files are untidy, not dangerous — never block the delete on them.
+    }
+    const { error } = await sb.from("deals").delete().eq("id", dealId);
+    if (error) {
+      alert(`Could not delete: ${error.message}`);
+      return;
+    }
+    router.push(`/building/${deal.building_id}`);
+  }
 
   async function saveCell(versionId: string, rowId: string, text: string) {
     const target = versions.find((v) => v.id === versionId);
@@ -165,13 +206,14 @@ export default function DealPage() {
   async function doExport(kind: "pdf" | "word" | "excel") {
     if (!deal) return;
     setExporting(kind);
-    const bundle = { buildingName: deal.buildings?.name || "", tenantName, versions };
+    const bundle = { buildingName: deal.buildings?.name || "", tenantName, versions, hiddenRows };
     try {
       if (kind === "pdf") await exportPDF(bundle);
       if (kind === "word") await exportWord(bundle);
       if (kind === "excel") await exportExcel(bundle);
     } catch (e) {
-      alert(`Export failed: ${e instanceof Error ? e.message : "unknown error"}. See DEPLOY.md troubleshooting.`);
+      console.error("export failed", e);
+      alert(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setExporting(null);
     }
@@ -224,6 +266,15 @@ export default function DealPage() {
               {exporting === "pdf" ? "…" : "PDF"}
             </Button>
             <Button size="sm" onClick={() => setUploadOpen(true)}>+ Add proposal</Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={deleteTransaction}
+              className="text-zinc-400 hover:text-red-600"
+              title="Delete this transaction"
+            >
+              Delete
+            </Button>
           </div>
         </div>
       </header>
@@ -239,6 +290,9 @@ export default function DealPage() {
           onDeleteColumn={deleteColumn}
           onAddSuggested={addSuggestedCounter}
           addingSuggested={addingSuggested}
+          hiddenRows={hiddenRows}
+          onHideRow={hideRow}
+          onRestoreRows={restoreRows}
         />
         <NegotiationLog versions={trail.versions} changeCounts={trail.movedCounts} onSave={saveSummary} />
       </div>
