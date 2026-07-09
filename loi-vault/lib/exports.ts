@@ -25,6 +25,8 @@ export interface ExportBundle {
   tenantName: string;
   versions: TrailVersion[];
   highlight?: HighlightMode;
+  /** Rows the team removed from this transaction's trail. */
+  hiddenRows?: string[];
 }
 
 const stamp = () => new Date().toISOString().slice(0, 10);
@@ -32,7 +34,7 @@ const safe = (s: string) => s.replace(/[^\w.\- ]+/g, "").trim().replace(/\s+/g, 
 
 function prepare(bundle: ExportBundle) {
   const trail = buildTrail(bundle.versions, TRAIL_ROWS);
-  const rows = visibleRows(trail, true, false);
+  const rows = visibleRows(trail, bundle.hiddenRows || [], false);
   const mode = bundle.highlight ?? defaultHighlight(bundle.versions);
   const lit = (c: { agreed: boolean; moved: boolean }) => (mode === "agreed" ? c.agreed : mode === "moved" ? c.moved : false);
   const legend =
@@ -48,7 +50,12 @@ function prepare(bundle: ExportBundle) {
 // Excel — the working copy the desk marks up.
 // ---------------------------------------------------------------
 export async function exportExcel(bundle: ExportBundle) {
-  const ExcelJS = (await import("exceljs")).default;
+  // `import("exceljs")` resolves to the Node build, which requires fs, stream
+  // and zlib. Webpack compiles it happily and it explodes the moment it runs in
+  // a browser. The dist bundle is self-contained; the UMD wrapper means the
+  // real export may sit on .default or on the namespace itself.
+  const mod = (await import("exceljs/dist/exceljs.min.js")) as unknown as Record<string, unknown>;
+  const ExcelJS = (mod.default ?? mod) as typeof import("exceljs");
   const { saveAs } = await import("file-saver");
   const { trail, rows, lit, legend } = prepare(bundle);
 
