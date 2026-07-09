@@ -9,11 +9,8 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# Extraction of long LOIs can exceed the 10s free-tier cap.
-# This timeout is honored on Netlify Pro; on the free tier, functions
-# are capped at 10 seconds regardless. See DEPLOY.md troubleshooting.
-[functions."extract-loi"]
-  timeout = 60
-
-[functions."summarize-round"]
-  timeout = 60
+# No per-function `timeout` keys here on purpose. Synchronous Netlify
+# functions are capped at 10s (free) / 26s (Pro, and only after you ask
+# support to raise it). Extraction blows past both, so extract-loi runs as a
+# *background* function instead — the `-background` filename suffix gives it
+# 15 minutes. Background functions require a paid Netlify plan.
