@@ -350,3 +350,36 @@ export function seedSuggestedCounter(latest: TrailVersion | undefined): {
     cell_overrides: { ...(latest.cell_overrides || {}) },
   };
 }
+
+// ---- manual highlighting -----------------------------------------------
+
+/**
+ * Highlights are a per-round working layer: a broker paints the cells that
+ * moved this round to prep an ownership conversation, and a fresh redline
+ * comes in clean. They live on the version (the column), keyed by row id, so
+ * dropping in the next proposal never inherits the last one's marks.
+ */
+export function highlightedRowsFor(version: TrailVersion | undefined): Set<string> {
+  const raw = version?.cell_overrides?.["__highlights"];
+  if (!raw) return new Set();
+  try {
+    const arr = JSON.parse(raw) as string[];
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/** Toggle one cell's highlight, returning the new overrides object to persist. */
+export function toggleHighlight(
+  version: TrailVersion,
+  rowId: string
+): Record<string, string> {
+  const set = highlightedRowsFor(version);
+  if (set.has(rowId)) set.delete(rowId);
+  else set.add(rowId);
+  const overrides = { ...(version.cell_overrides || {}) };
+  if (set.size) overrides["__highlights"] = JSON.stringify(Array.from(set));
+  else delete overrides["__highlights"];
+  return overrides;
+}
