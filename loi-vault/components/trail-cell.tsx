@@ -8,14 +8,17 @@ interface Props {
   field: AnyField;
   kind: FieldKind;
   display: string;
+  /** Manually painted by a teammate this round. */
   highlighted: boolean;
+  /** Differs from the cell to its left — drives the hover "was X" note only. */
   moved: boolean;
   priorDisplay: string | null;
   clean: boolean;
   onSave: (text: string) => void;
+  onToggleHighlight: () => void;
 }
 
-export function TrailCell({ field, kind, display, highlighted, moved, priorDisplay, clean, onSave }: Props) {
+export function TrailCell({ field, kind, display, highlighted, moved, priorDisplay, clean, onSave, onToggleHighlight }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [hover, setHover] = useState(false);
@@ -39,15 +42,31 @@ export function TrailCell({ field, kind, display, highlighted, moved, priorDispl
   return (
     <td
       className={cn(
-        "relative border border-zinc-400 dark:border-zinc-600 p-0 align-middle",
+        "group/cell relative border border-zinc-400 dark:border-zinc-600 p-0 align-middle",
         highlighted
           ? "bg-[#FFFF00] dark:bg-yellow-300"
-          : "bg-[#DCE6F1] dark:bg-slate-800/70",
-        !clean && moved && "ring-1 ring-inset ring-amber-500"
+          : "bg-[#DCE6F1] dark:bg-slate-800/70"
       )}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleHighlight();
+        }}
+        className={cn(
+          "absolute right-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded text-[11px] transition-opacity",
+          highlighted
+            ? "bg-yellow-400 text-black opacity-100 hover:bg-yellow-500"
+            : "bg-white/80 text-zinc-500 opacity-0 hover:bg-white hover:text-zinc-800 group-hover/cell:opacity-100"
+        )}
+        aria-label={highlighted ? "Remove highlight" : "Highlight this cell"}
+        aria-pressed={highlighted}
+        title={highlighted ? "Remove highlight" : "Highlight this cell"}
+      >
+        {highlighted ? "\u2715" : "\u25CF"}
+      </button>
       {editing ? (
         <textarea
           autoFocus
