@@ -4,10 +4,9 @@ import {
   buildTrail,
   columnHeader,
   columnTitle,
-  defaultHighlight,
+  highlightedRowsFor,
   visibleRows,
   TRAIL_ROWS,
-  type HighlightMode,
   type TrailVersion,
 } from "./trail";
 
@@ -24,7 +23,6 @@ export interface ExportBundle {
   buildingName: string;
   tenantName: string;
   versions: TrailVersion[];
-  highlight?: HighlightMode;
   /** Rows the team removed from this transaction's trail. */
   hiddenRows?: string[];
 }
@@ -66,14 +64,12 @@ function download(blob: Blob, filename: string) {
 function prepare(bundle: ExportBundle) {
   const trail = buildTrail(bundle.versions, TRAIL_ROWS);
   const rows = visibleRows(trail, bundle.hiddenRows || [], false);
-  const mode = bundle.highlight ?? defaultHighlight(bundle.versions);
-  const lit = (c: { agreed: boolean; moved: boolean }) => (mode === "agreed" ? c.agreed : mode === "moved" ? c.moved : false);
-  const legend =
-    mode === "agreed"
-      ? "Highlighted cells are accepted from the prior proposal."
-      : mode === "moved"
-      ? "Highlighted cells changed from the proposal to their left."
-      : "";
+  // Manual highlights, keyed by column then row — exactly what's painted on screen.
+  const marks: Record<string, Set<string>> = {};
+  for (const v of trail.versions) marks[v.id] = highlightedRowsFor(v);
+  const lit = (c: { versionId: string; rowId: string }) => marks[c.versionId]?.has(c.rowId) || false;
+  const anyLit = Object.values(marks).some((set) => set.size > 0);
+  const legend = anyLit ? "Highlighted cells were flagged as the terms that moved this round." : "";
   return { trail, rows, lit, legend };
 }
 
