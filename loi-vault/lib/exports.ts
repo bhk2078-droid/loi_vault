@@ -267,23 +267,38 @@ export async function exportPDF(bundle: ExportBundle) {
   const { trail, rows, lit, legend } = prepare(bundle);
 
   const n = Math.max(1, trail.versions.length);
-  const termW = "16%";
-  const colW = `${84 / n}%`;
+  // Term column takes a slim fixed share; proposals split the rest evenly and
+  // fill the full page width — no wasted right margin that forces prose to wrap.
+  const termPct = n >= 4 ? 12 : n === 3 ? 13 : 14;
+  const termW = `${termPct}%`;
+  const colW = `${(100 - termPct) / n}%`;
+
+  // Scale type and padding to how much has to fit. More rows or wider columns
+  // (fewer proposals) can afford a hair more; a dense 4-column trail tightens
+  // up so it still lands on one landscape page.
+  // Sized so a full 12-row trail with long prose cells lands on ONE landscape
+  // page. Verified against the Gravity two-column deal (Landlord's Work is the
+  // tallest row). More columns get a touch tighter since each cell is narrower.
+  const rowCount = rows.length;
+  const tight = n >= 3 || rowCount > 12;
+  const fontSize = tight ? 6.5 : 7;
+  const cellPad = tight ? 3 : 3.5;
+  const lineHeight = tight ? 1.15 : 1.2;
 
   const s = StyleSheet.create({
-    page: { padding: 24, fontSize: 8, fontFamily: "Helvetica", color: "#111827" },
-    title: { fontSize: 13, fontFamily: "Helvetica-Bold", textAlign: "center", textDecoration: "underline" },
-    subtitle: { fontSize: 11, fontFamily: "Helvetica-Bold", textAlign: "center", textDecoration: "underline", marginBottom: 10 },
+    page: { padding: 18, fontSize, fontFamily: "Helvetica", color: "#111827" },
+    title: { fontSize: 12, fontFamily: "Helvetica-Bold", textAlign: "center", textDecoration: "underline" },
+    subtitle: { fontSize: 10, fontFamily: "Helvetica-Bold", textAlign: "center", textDecoration: "underline", marginBottom: 8 },
     row: { flexDirection: "row" },
-    termCell: { width: termW, borderWidth: 0.5, borderColor: `#${RULE}`, padding: 5, fontFamily: "Helvetica-Bold", justifyContent: "center" },
-    cell: { borderWidth: 0.5, borderColor: `#${RULE}`, padding: 5, backgroundColor: `#${BLUE}`, justifyContent: "center" },
+    termCell: { width: termW, borderWidth: 0.5, borderColor: `#${RULE}`, paddingVertical: cellPad, paddingHorizontal: 4, fontFamily: "Helvetica-Bold", justifyContent: "center" },
+    cell: { borderWidth: 0.5, borderColor: `#${RULE}`, paddingVertical: cellPad, paddingHorizontal: 4, backgroundColor: `#${BLUE}`, justifyContent: "center" },
     lit: { backgroundColor: `#${YELLOW}` },
     headText: { fontFamily: "Helvetica-Bold", textAlign: "center" },
-    cellText: { textAlign: "center", lineHeight: 1.3 },
-    legend: { marginTop: 8, fontSize: 7, color: "#808080" },
-    logHead: { fontSize: 11, fontFamily: "Helvetica-Bold", marginTop: 16, marginBottom: 4 },
-    logTitle: { fontFamily: "Helvetica-Bold", marginTop: 8, marginBottom: 2 },
-    logPara: { marginBottom: 3, lineHeight: 1.4 },
+    cellText: { textAlign: "center", lineHeight },
+    legend: { marginTop: 6, fontSize: 6.5, color: "#808080" },
+    logHead: { fontSize: 10, fontFamily: "Helvetica-Bold", marginTop: 12, marginBottom: 4 },
+    logTitle: { fontFamily: "Helvetica-Bold", marginTop: 6, marginBottom: 2 },
+    logPara: { marginBottom: 2, lineHeight: 1.35 },
   });
 
   const doc = h(
@@ -321,9 +336,10 @@ export async function exportPDF(bundle: ExportBundle) {
 
       legend ? h(Text, { style: s.legend }, legend) : null,
 
+      // The log, if any, breaks to its own page so it never squeezes the grid.
       ...(trail.versions.some((v) => v.change_summary)
         ? [
-            h(Text, { style: s.logHead }, "Negotiation log"),
+            h(Text, { style: s.logHead, break: true }, "Negotiation log"),
             ...trail.versions
               .filter((v) => v.change_summary)
               .flatMap((v) => [
