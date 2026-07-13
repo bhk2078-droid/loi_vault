@@ -1,15 +1,14 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
   buildTrail,
   columnDate,
   columnTitle,
-  defaultHighlight,
+  highlightedRowsFor,
   visibleRows,
   DETAIL_ROWS,
   TRAIL_ROWS,
-  type HighlightMode,
   type TrailVersion,
 } from "@/lib/trail";
 import { TrailCell } from "./trail-cell";
@@ -30,13 +29,8 @@ interface Props {
   hiddenRows: string[];
   onHideRow: (rowId: string) => void;
   onRestoreRows: () => void;
+  onToggleHighlight: (versionId: string, rowId: string) => void;
 }
-
-const HIGHLIGHTS: Array<{ value: HighlightMode; label: string; legend: string }> = [
-  { value: "agreed", label: "Agreed terms", legend: "Highlighted = accepted from the prior proposal." },
-  { value: "moved", label: "Terms that moved", legend: "Highlighted = changed from the proposal to its left." },
-  { value: "none", label: "No highlight", legend: "" },
-];
 
 export function TransactionTrail({
   tenantName,
@@ -51,22 +45,22 @@ export function TransactionTrail({
   hiddenRows,
   onHideRow,
   onRestoreRows,
+  onToggleHighlight,
 }: Props) {
   const [view, setView] = useState<"trail" | "detail">("trail");
-  const [highlight, setHighlight] = useState<HighlightMode>(() => defaultHighlight(versions));
   const [onlyMoved, setOnlyMoved] = useState(false);
   const [editingHeader, setEditingHeader] = useState<string | null>(null);
   const [labelDraft, setLabelDraft] = useState("");
 
-  // Adding a suggested-counter column flips the sensible default.
-  useEffect(() => {
-    setHighlight(defaultHighlight(versions));
-  }, [versions.length, versions[versions.length - 1]?.source]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const defs = view === "trail" ? TRAIL_ROWS : DETAIL_ROWS;
   const trail = useMemo(() => buildTrail(versions, defs), [versions, defs]);
   const rows = useMemo(() => visibleRows(trail, hiddenRows, onlyMoved), [trail, hiddenRows, onlyMoved]);
-  const legend = HIGHLIGHTS.find((h) => h.value === highlight)?.legend || "";
+  // Which cells are painted, per column.
+  const highlightsByVersion = useMemo(() => {
+    const m: Record<string, Set<string>> = {};
+    for (const v of trail.versions) m[v.id] = highlightedRowsFor(v);
+    return m;
+  }, [trail.versions]);
 
   if (!versions.length) {
     return (
@@ -100,18 +94,7 @@ export function TransactionTrail({
         </div>
 
         <div className="flex flex-wrap items-center gap-4 text-[13px]">
-          <label className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
-            Highlight
-            <select
-              value={highlight}
-              onChange={(e) => setHighlight(e.target.value as HighlightMode)}
-              className="rounded border border-zinc-300 dark:border-zinc-700 bg-transparent px-1.5 py-0.5 text-[13px]"
-            >
-              {HIGHLIGHTS.map((h) => (
-                <option key={h.value} value={h.value}>{h.label}</option>
-              ))}
-            </select>
-          </label>
+          <span className="text-[12px] text-zinc-400">Hover a cell to highlight it</span>
           <label className="flex cursor-pointer items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
             <input type="checkbox" checked={onlyMoved} onChange={(e) => setOnlyMoved(e.target.checked)} className="accent-accent" />
             Only moved
@@ -245,11 +228,12 @@ export function TransactionTrail({
                         field={c.field}
                         kind={r.kind}
                         display={c.display}
-                        highlighted={highlight === "agreed" ? c.agreed : highlight === "moved" ? c.moved : false}
+                        highlighted={highlightsByVersion[c.versionId]?.has(r.id) || false}
                         moved={c.moved}
                         priorDisplay={c.priorDisplay}
                         clean={view === "trail"}
                         onSave={(text) => onCellSave(c.versionId, r.id, text)}
+                        onToggleHighlight={() => onToggleHighlight(c.versionId, r.id)}
                       />
                     ))}
                   </tr>
@@ -260,15 +244,13 @@ export function TransactionTrail({
         </table>
       </div>
 
-      {legend && (
-        <footer className="flex items-center gap-3 border-t border-zinc-200 dark:border-zinc-800 px-4 py-2.5 text-[11px] text-zinc-400">
-          <span className="inline-block h-3 w-3 border border-zinc-400 bg-[#FFFF00]" aria-hidden />
-          <span>{legend}</span>
-          <span className="ml-auto flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-red-500" /> low confidence — verify against the document
-          </span>
-        </footer>
-      )}
+      <footer className="flex items-center gap-3 border-t border-zinc-200 dark:border-zinc-800 px-4 py-2.5 text-[11px] text-zinc-400">
+        <span className="inline-block h-3 w-3 border border-zinc-400 bg-[#FFFF00]" aria-hidden />
+        <span>Highlight the cells that moved this round — hover a cell and click the dot. Marks clear when a new proposal is added.</span>
+        <span className="ml-auto flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-red-500" /> low confidence — verify against the document
+        </span>
+      </footer>
     </section>
   );
 }
