@@ -9,6 +9,7 @@ import {
   applyCellEdit,
   buildTrail,
   seedSuggestedCounter,
+  toggleHighlight,
   TRAIL_ROWS,
   DETAIL_ROWS,
   type TrailVersion,
@@ -147,6 +148,14 @@ export default function DealPage() {
         })
         .eq("id", dealId);
     }
+  }
+
+  async function highlightCell(versionId: string, rowId: string) {
+    const target = versions.find((v) => v.id === versionId);
+    if (!target) return;
+    const overrides = toggleHighlight(target, rowId);
+    setVersions((vs) => vs.map((v) => (v.id === versionId ? { ...v, cell_overrides: overrides } : v)));
+    await supabase().from("loi_versions").update({ cell_overrides: overrides }).eq("id", versionId);
   }
 
   async function relabel(versionId: string, label: string) {
@@ -293,6 +302,7 @@ export default function DealPage() {
           hiddenRows={hiddenRows}
           onHideRow={hideRow}
           onRestoreRows={restoreRows}
+          onToggleHighlight={highlightCell}
         />
         <NegotiationLog versions={trail.versions} changeCounts={trail.movedCounts} onSave={saveSummary} />
       </div>
